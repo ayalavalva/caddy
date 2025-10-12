@@ -1,68 +1,82 @@
-# Caddy (Cloudflare DNS + Tailscale) — Docker Image via GitHub Actions
+# Caddy (Cloudflare DNS + Tailscale) — built with GitHub Actions
 
-This repository builds a **reproducible**, **multi-arch** Caddy Docker image with:
-- **Cloudflare DNS** plugin: `github.com/caddy-dns/cloudflare`
-- **Tailscale** plugin: `github.com/tailscale/caddy-tailscale`
+This repository builds a **reproducible**, **multi-arch** Caddy image with:
+- **Cloudflare DNS**: `github.com/caddy-dns/cloudflare`
+- **Tailscale**: `github.com/tailscale/caddy-tailscale`
 
 Images are published to **GitHub Container Registry (GHCR)**:
 
-ghcr.io/<owner>/<repo>:latest
-ghcr.io/<owner>/<repo>:<caddy_version>
+- ghcr.io/<owner>/<repo>:latest
+- ghcr.io/<owner>/<repo>:<caddy_version>
 
-> Note: GHCR namespace must be **lowercase** (owner and repo).
+> ⚠️ GHCR paths must be **lowercase** (`<owner>/<repo>`).
 
-It tags images as:
-- `latest` (only on the default branch)
-- `<CADDY_VERSION>` (e.g., `2.10.2`)
+---
 
 ## Why this repo?
-- **Reproducibility**: Caddy base image is pinned via `ARG CADDY_VERSION`.
-- **Safety**: You can (optionally) pin plugin versions to avoid surprise breakage.
-- **Multi-arch**: Builds for `linux/amd64` and `linux/arm64`.
-- **Automation**: A scheduled job checks for new Caddy releases and auto-bumps `CADDY_VERSION`.
+
+- **Reproducible**: `CADDY_VERSION` is pinned; plugins can be pinned to tags or commits.
+- **Multi-arch**: `linux/amd64` and `linux/arm64`.
+- **Automated**: A scheduled job checks upstream Caddy releases and auto-bumps `CADDY_VERSION`.
+- **Supply-chain**: Publishes SBOM and SLSA provenance.
+
+---
 
 ## How it works
 
 - **Workflow**: `.github/workflows/build-docker.yml`
-  - Triggers on:
-    - `push` to `main` (Dockerfile or workflow changes)
-    - `pull_request` (build only, no push)
-    - **Schedule**: daily check for a new Caddy release (stable)
+  - Triggers:
+    - `push` to `main` (only rebuilds/pushes when relevant files change)
+    - `pull_request` (builds, but does **not** push)
+    - **Schedule** (daily) — checks for a new *stable* Caddy release
     - Manual `workflow_dispatch`
-  - Job **check-caddy-version**:
-    - Fetches the latest **stable** Caddy release from GitHub
-    - Compares with `ARG CADDY_VERSION` in `Dockerfile`
-    - If changed, commits a bump to the repo
-  - Job **build**:
-    - Builds and (if not PR) pushes a **multi-arch** image
-    - Emits **SBOM** and **provenance** metadata
+  - **check-caddy-version**:
+    - Fetches the latest stable Caddy tag
+    - Compares against `ARG CADDY_VERSION` in `Dockerfile`
+    - If different, commits a bump (`chore: bump CADDY_VERSION to X.Y.Z`)
+  - **build**:
+    - Builds and (if not a PR) pushes a **multi-arch** image to GHCR
+    - Emits **SBOM** and **provenance**
 
-## Multi-arch
+---
 
-Images are built for:
+## Tags
 
-- linux/amd64
-- linux/arm64
+- `latest` (default branch only)
+- `<caddy_version>` (e.g. `2.10.2`)
+- Additional branch/SHA tags for traceability
 
-## Provenance & SBOM
+---
 
-The workflow publishes SLSA provenance and SBOM, so you can trace build inputs and dependencies.
+## Pinning strategy
 
-## Registries
+- **Caddy**: pinned via `ARG CADDY_VERSION` (bumped automatically on new releases).
+- **Cloudflare plugin**: **tagged** → pin to a tag (e.g. `@v0.2.1`).
+- **Tailscale plugin**: **no tags** → pin to a **commit SHA** for reproducibility, or use `@main` if you accept tip-of-tree.
 
-This setup pushes to **Docker Hub**. Set the following **repository secrets**:
-- `DOCKER_USERNAME`
-- `DOCKER_PASSWORD` (or an access token)
+Edit these in the `Dockerfile`:
 
-Change the `images:` in the `docker/metadata-action` step if you prefer GHCR:
-```yaml
-with:
-  images: ghcr.io/<owner>/<repo>
+```dockerfile
+ARG CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.1
+ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@<commit-sha-or-main>
 ```
 
-## Usage
+## Pulling the image
 
-Replace … with your Caddyfile/binds:
+If the package is public:
+
+`docker pull ghcr.io/<owner>/<repo>:latest`
+
+If private, authenticate first:
+
+```
+echo <YOUR_GH_PAT> | docker login ghcr.io -u <your_gh_user> --password-stdin
+docker pull ghcr.io/<owner>/<repo>:latest
+```
+
+> Create a classic GitHub PAT with read:packages (and write:packages if you push locally).
+
+## Run
 
 ```docker
 docker run -d --name caddy \
@@ -72,3 +86,20 @@ docker run -d --name caddy \
   -v caddy_config:/config \
   ghcr.io/<owner>/<repo>:latest
 ```
+
+## Making the package public
+
+1. Repo → Packages (right sidebar) → select the container.
+2. Package settings → Visibility → Public.
+3. (Optional) Add description/README at the package level.
+
+## Troubleshooting
+
+- Build fails with ${CF_PLUGIN} / ${TS_PLUGIN}
+Add ARG CF_PLUGIN / ARG TS_PLUGIN to the Dockerfile (with defaults), or hardcode the plugin strings in xcaddy build.
+
+- 401 pulling from GHCR
+Ensure the package is public or you’re logged in to GHCR with a PAT that has read:packages.
+
+- Tag not found
+Check that the workflow run finished successfully and that your image path is lowercase (ghcr.io/<owner>/<repo>).
