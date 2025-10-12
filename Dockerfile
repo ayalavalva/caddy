@@ -9,9 +9,6 @@ ARG CADDY_VERSION
 ARG CF_PLUGIN
 ARG TS_PLUGIN
 
-# Quick sanity check in logs
-RUN echo "CADDY_VERSION=$CADDY_VERSION" "CF_PLUGIN=$CF_PLUGIN" "TS_PLUGIN=$TS_PLUGIN"
-
 RUN xcaddy build "v${CADDY_VERSION#v}" \
   --with "${CF_PLUGIN}" \
   --with "${TS_PLUGIN}"
