@@ -142,19 +142,24 @@ docker run -d --name caddy \
 
 ## Troubleshooting
 
-Why a `plugins.lock` file?
+**Why a `plugins.lock` file?**
+
 It’s an auditable, single source of truth for plugin pins. CI reads it, bumps it when upstream changes, and your Dockerfile stays clean.
 
-Can I unpin plugins?
+**Can I unpin plugins?**
+
 Possible, but not recommended. Pinning ensures reproducible builds. This repo already auto-bumps to new versions/commits, so you get updates without losing control.
 
-I see a `git-<sha>` tag, what is it?
+**I see a `git-<sha>` tag, what is it?**
+
 A traceability tag tied to the repo commit that built the image. Use `<caddy_version>` for immutable pulls; `latest` for convenience.
 
-401 pulling from GHCR
+**401 pulling from GHCR**
+
 Make sure the package is public or login with a PAT that has `read:packages`.
 
-Tag not found
+**Tag not found**
+
 Check that the latest workflow run succeeded and that your `ghcr.io/<owner>/<repo>` path is lowercase.
 
 ---
