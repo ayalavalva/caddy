@@ -8,6 +8,7 @@ Images are published to **GitHub Container Registry (GHCR)**:
 
 - ghcr.io/<owner>/<repo>:latest
 - ghcr.io/<owner>/<repo>:<caddy_version>
+- Traceability tags (branch/SHA) are added automatically
 
 > ⚠️ GHCR paths must be **lowercase** (`<owner>/<repo>`).
 
@@ -17,10 +18,10 @@ Images are published to **GitHub Container Registry (GHCR)**:
 
 Useful Caddy build with the ability to generate Cloudflare SSL certificates with DNS01, and with an extended Tailscale integration.
 
-- **Reproducible**: `CADDY_VERSION` is pinned; plugins can be pinned to tags or commits.
-- **Multi-arch**: `linux/amd64` and `linux/arm64`.
-- **Automated**: A scheduled job checks upstream Caddy releases and auto-bumps `CADDY_VERSION`.
-- **Supply-chain**: Publishes SBOM and SLSA provenance.
+- **Reproducible**: Caddy and plugins are pinned (Caddy to a tag; plugins to a tag or commit).
+- **Multi-arch**: Builds for `linux/amd64` and `linux/arm64`.
+- **Automated**: CI watches for new Caddy releases and plugin updates, bumps pins in-repo, and rebuilds.
+- **Supply-chain**: Publishes SBOM and SLSA provenance for each image.
 
 ---
 
@@ -29,24 +30,50 @@ Useful Caddy build with the ability to generate Cloudflare SSL certificates with
 - **Workflow**: `.github/workflows/build-docker.yml`
   - Triggers:
     - `push` to `main` (only rebuilds/pushes when relevant files change)
-    - `pull_request` (builds, but does **not** push)
-    - **Schedule** (daily) — checks for a new *stable* Caddy release
+    - `pull_request` (build only; no push)
+    - **Nightly schedule** (detect new Caddy or plugin updates)
     - Manual `workflow_dispatch`
-  - **check-caddy-version**:
-    - Fetches the latest stable Caddy tag
-    - Compares against `ARG CADDY_VERSION` in `Dockerfile`
-    - If different, commits a bump (`chore: bump CADDY_VERSION to X.Y.Z`)
-  - **build**:
-    - Builds and (if not a PR) pushes a **multi-arch** image to GHCR
-    - Emits **SBOM** and **provenance**
+  - **Detect updates**
+    - Gets latest stable Caddy release.
+    - Gets latest tag for the Cloudflare plugin.
+    - Gets latest commit on main for the Tailscale plugin (no tags upstream).
+  - **Auto-bump pins**
+    - If any upstream changed, CI commits updated pins to:
+      - `Dockerfile` (`ARG CADDY_VERSION=…`)
+      - `plugins.lock` (plugin refs)
+  - **build & publish**:
+    - Multi-arch build to GHCR.
+    - Adds `latest`, `<caddy_version>`, branch and short-SHA tags.
+    - Attaches SBOM/provenance.
+
+---
+
+## Where pins live
+
+Dockerfile (defaults; CI overrides via build-args):
+
+```
+ARG CADDY_VERSION=2.10.2
+ARG CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.1
+ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@32b202f0a9530858ffc25bb29daec98977923229
+```
 
 ---
 
 ## Tags
 
+Dockerfile (defaults; CI overrides via build-args):
+
 - `latest` (default branch only)
 - `<caddy_version>` (e.g. `2.10.2`)
 - Additional branch/SHA tags for traceability
+
+plugins.lock (single source of truth for plugins; owned by CI):
+
+```
+CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.1
+TS_PLUGIN=github.com/tailscale/caddy-tailscale@32b202f0a9530858ffc25bb29daec98977923229
+```
 
 ---
 
@@ -63,9 +90,21 @@ ARG CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.1
 ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@<commit-sha-or-main>
 ```
 
+> You generally never edit pins by hand. CI bumps them when upstream changes are detected. If you do need a manual override, edit `plugins.lock` (for plugins) and/or the Dockerfile’s `CADDY_VERSION`, then push to `main`.
+
 ---
 
-## Pulling the image
+## Tags you’ll see
+
+- `latest` (default branch only)
+- `<caddy_version>` (e.g. `2.10.2`)
+- `git-<shortsha>` and branch tags for traceability
+
+Pull the immutable `<caddy_version>` tag in production if you want strict repeatability.
+
+---
+
+## Pull & Run
 
 If the package is public:
 
@@ -80,9 +119,7 @@ docker pull ghcr.io/<owner>/<repo>:latest
 
 > Create a classic GitHub PAT with read:packages (and write:packages if you push locally).
 
----
-
-## Run
+Run
 
 ```docker
 docker run -d --name caddy \
@@ -105,11 +142,25 @@ docker run -d --name caddy \
 
 ## Troubleshooting
 
-- Build fails with ${CF_PLUGIN} / ${TS_PLUGIN}
-Add ARG CF_PLUGIN / ARG TS_PLUGIN to the Dockerfile (with defaults), or hardcode the plugin strings in xcaddy build.
+Why a `plugins.lock` file?
+It’s an auditable, single source of truth for plugin pins. CI reads it, bumps it when upstream changes, and your Dockerfile stays clean.
 
-- 401 pulling from GHCR
-Ensure the package is public or you’re logged in to GHCR with a PAT that has read:packages.
+Can I unpin plugins?
+Possible, but not recommended. Pinning ensures reproducible builds. This repo already auto-bumps to new versions/commits, so you get updates without losing control.
 
-- Tag not found
-Check that the workflow run finished successfully and that your image path is lowercase (ghcr.io/<owner>/<repo>).
+I see a `git-<sha>` tag, what is it?
+A traceability tag tied to the repo commit that built the image. Use `<caddy_version>` for immutable pulls; `latest` for convenience.
+
+401 pulling from GHCR
+Make sure the package is public or login with a PAT that has `read:packages`.
+
+Tag not found
+Check that the latest workflow run succeeded and that your `ghcr.io/<owner>/<repo>` path is lowercase.
+
+---
+
+## File map
+
+- `Dockerfile` — build recipe; accepts `CADDY_VERSION`, `CF_PLUGIN`, `TS_PLUGIN` build args.
+- `plugins.lock` — plugin pins (tag or commit).
+- `.github/workflows/build-docker.yml` — detects updates, bumps pins, builds & publishes.
