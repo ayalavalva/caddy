@@ -1,8 +1,8 @@
-# Caddy (with Cloudflare DNS + Tailscale plugins)
+# Caddy (with Cloudflare + Tailscale plugins)
 
 This repository builds a **reproducible**, **multi-arch** Caddy image with:
-- **Cloudflare DNS**: `github.com/caddy-dns/cloudflare`
-- **Tailscale**: `github.com/tailscale/caddy-tailscale`
+- **Cloudflare plugin**: `github.com/caddy-dns/cloudflare`
+- **Tailscale plugin**: `github.com/tailscale/caddy-tailscale`
 
 Images are published to **GitHub Container Registry (GHCR)**:
 
@@ -144,7 +144,7 @@ docker run -d --name caddy \
 
 **Why a `plugins.lock` file?**
 
-It’s an auditable, single source of truth for plugin pins. CI reads it, bumps it when upstream changes, and your Dockerfile stays clean.
+It’s an auditable, single source of truth for plugin pins. CI reads it, bumps it when upstream changes, Dockerfile stays clean.
 
 **Can I unpin plugins?**
 
