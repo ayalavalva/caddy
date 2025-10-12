@@ -5,7 +5,13 @@ ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@32b202f0a9530858ffc25bb29daec
 
 FROM caddy:${CADDY_VERSION}-builder AS builder
 
-# xcaddy expects the git tag with leading v
+ARG CADDY_VERSION
+ARG CF_PLUGIN
+ARG TS_PLUGIN
+
+# Quick sanity check in logs
+RUN echo "CADDY_VERSION=$CADDY_VERSION" "CF_PLUGIN=$CF_PLUGIN" "TS_PLUGIN=$TS_PLUGIN"
+
 RUN xcaddy build "v${CADDY_VERSION#v}" \
   --with "${CF_PLUGIN}" \
   --with "${TS_PLUGIN}"
