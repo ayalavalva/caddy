@@ -1,12 +1,14 @@
 # Choose the exact Caddy and plugin versions you trust
 ARG CADDY_VERSION=2.10.2
+ARG CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.1
+ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@32b202f0a9530858ffc25bb29daec98977923229
 
 FROM caddy:${CADDY_VERSION}-builder AS builder
 
 # xcaddy expects the git tag with leading v
 RUN xcaddy build "v${CADDY_VERSION}" \
-  --with github.com/caddy-dns/cloudflare \
-  --with github.com/tailscale/caddy-tailscale
+  --with "${CF_PLUGIN}" \
+  --with "${TS_PLUGIN}"
 
 FROM caddy:${CADDY_VERSION}
 
