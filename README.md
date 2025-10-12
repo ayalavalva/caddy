@@ -1,4 +1,4 @@
-# Caddy (Cloudflare DNS + Tailscale) — built with GitHub Actions
+# Caddy (Cloudflare DNS + Tailscale plugins)
 
 This repository builds a **reproducible**, **multi-arch** Caddy image with:
 - **Cloudflare DNS**: `github.com/caddy-dns/cloudflare`
