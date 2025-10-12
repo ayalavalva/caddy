@@ -1,4 +1,4 @@
-# Caddy (Cloudflare DNS + Tailscale plugins)
+# Caddy (with Cloudflare DNS + Tailscale plugins)
 
 This repository builds a **reproducible**, **multi-arch** Caddy image with:
 - **Cloudflare DNS**: `github.com/caddy-dns/cloudflare`
@@ -14,6 +14,8 @@ Images are published to **GitHub Container Registry (GHCR)**:
 ---
 
 ## Why this repo?
+
+Useful Caddy build with the ability to generate Cloudflare SSL certificates with DNS01, and with an extended Tailscale integration.
 
 - **Reproducible**: `CADDY_VERSION` is pinned; plugins can be pinned to tags or commits.
 - **Multi-arch**: `linux/amd64` and `linux/arm64`.
@@ -61,6 +63,8 @@ ARG CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.1
 ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@<commit-sha-or-main>
 ```
 
+---
+
 ## Pulling the image
 
 If the package is public:
@@ -76,6 +80,8 @@ docker pull ghcr.io/<owner>/<repo>:latest
 
 > Create a classic GitHub PAT with read:packages (and write:packages if you push locally).
 
+---
+
 ## Run
 
 ```docker
@@ -87,11 +93,15 @@ docker run -d --name caddy \
   ghcr.io/<owner>/<repo>:latest
 ```
 
+---
+
 ## Making the package public
 
 1. Repo → Packages (right sidebar) → select the container.
 2. Package settings → Visibility → Public.
 3. (Optional) Add description/README at the package level.
+
+---
 
 ## Troubleshooting
 
