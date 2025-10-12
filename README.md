@@ -112,19 +112,21 @@ If the package is public:
 
 If private, authenticate first:
 
-```
-echo <YOUR_GH_PAT> | docker login ghcr.io -u <your_gh_user> --password-stdin
+```bash
+echo "<YOUR_GH_PAT>" | docker login ghcr.io -u <your_gh_user> --password-stdin
 docker pull ghcr.io/<owner>/<repo>:latest
+# or pin a version:
+docker pull ghcr.io/<owner>/<repo>:2.10.2
 ```
 
 > Create a classic GitHub PAT with read:packages (and write:packages if you push locally).
 
 Run
 
-```docker
+```bash
 docker run -d --name caddy \
   -p 80:80 -p 443:443 \
-  -v $PWD/Caddyfile:/etc/caddy/Caddyfile:ro \
+  -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" \
   -v caddy_data:/data \
   -v caddy_config:/config \
   ghcr.io/<owner>/<repo>:latest
