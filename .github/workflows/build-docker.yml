@@ -5,11 +5,12 @@ on:
     branches: [ main ]
     paths:
       - 'Dockerfile'
+      - 'plugins.lock'
       - '.github/workflows/build-docker.yml'
   pull_request:
     branches: [ main ]
   schedule:
-    - cron: '0 0 * * *'   # daily check for new Caddy
+    - cron: '0 0 * * *'   # daily: detect new Caddy or plugin updates
   workflow_dispatch:
 
 concurrency:
@@ -17,56 +18,142 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write     # for auto-bump commit
-  packages: write     # REQUIRED for pushing to GHCR
+  contents: write     # required for auto-bump commits
+  packages: write     # required for pushing to GHCR
 
 jobs:
-  check-caddy-version:
+  detect-updates:
     runs-on: ubuntu-latest
     outputs:
-      latest: ${{ steps.get.outputs.version }}
-      changed: ${{ steps.compare.outputs.changed }}
+      caddy_latest: ${{ steps.caddy_latest.outputs.version }}
+      caddy_changed: ${{ steps.caddy_compare.outputs.changed }}
+      cf_latest: ${{ steps.cf_latest.outputs.ref }}
+      cf_changed: ${{ steps.cf_compare.outputs.changed }}
+      ts_latest: ${{ steps.ts_latest.outputs.ref }}
+      ts_changed: ${{ steps.ts_compare.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
 
+      # --- Read current pins from repo files ---
+      - name: Read current pins
+        id: current
+        run: |
+          cur_caddy=$(grep -E '^ARG CADDY_VERSION=' Dockerfile | cut -d= -f2)
+          cur_cf=$(grep -E '^CF_PLUGIN=' plugins.lock | cut -d= -f2-)
+          cur_ts=$(grep -E '^TS_PLUGIN=' plugins.lock | cut -d= -f2-)
+          echo "caddy=${cur_caddy}" >> "$GITHUB_OUTPUT"
+          echo "cf=${cur_cf}"       >> "$GITHUB_OUTPUT"
+          echo "ts=${cur_ts}"       >> "$GITHUB_OUTPUT"
+
+      # --- Get latest stable Caddy release (non-prerelease) ---
       - name: Get latest Caddy release (stable)
-        id: get
+        id: caddy_latest
         run: |
           v=$(curl -fsSL https://api.github.com/repos/caddyserver/caddy/releases/latest \
              | jq -r 'select(.prerelease==false) | .tag_name' | sed 's/^v//')
-          echo "version=$v" >> $GITHUB_OUTPUT
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
-      - name: Read current version from Dockerfile
-        id: cur
+      - name: Compare Caddy
+        id: caddy_compare
         run: |
-          cur=$(grep -E '^ARG CADDY_VERSION=' Dockerfile | cut -d= -f2)
-          echo "version=$cur" >> $GITHUB_OUTPUT
-
-      - name: Compare
-        id: compare
-        run: |
-          if [ "${{ steps.get.outputs.version }}" != "${{ steps.cur.outputs.version }}" ]; then
-            echo "changed=true" >> $GITHUB_OUTPUT
+          if [ "${{ steps.caddy_latest.outputs.version }}" != "${{ steps.current.outputs.caddy }}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- Find latest Cloudflare plugin tag (semver max) ---
+      - name: Get latest cloudflare plugin tag
+        id: cf_latest
+        run: |
+          # pick highest semver tag (e.g., v0.2.1)
+          ref=$(git ls-remote --tags https://github.com/caddy-dns/cloudflare.git \
+                 | awk -F/ '/refs\/tags\/v[0-9]/{print $3}' \
+                 | sed 's/\^{}//' | sort -V | tail -n1)
+          echo "ref=github.com/caddy-dns/cloudflare@${ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Compare Cloudflare plugin
+        id: cf_compare
+        run: |
+          if [ "${{ steps.cf_latest.outputs.ref }}" != "${{ steps.current.outputs.cf }}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- For tailscale plugin (no tags): use latest commit on default branch (main) ---
+      - name: Get latest tailscale plugin commit (main)
+        id: ts_latest
+        run: |
+          # get latest commit hash on main
+          hash=$(git ls-remote https://github.com/tailscale/caddy-tailscale.git refs/heads/main | awk '{print $1}')
+          echo "ref=github.com/tailscale/caddy-tailscale@${hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Compare tailscale plugin
+        id: ts_compare
+        run: |
+          if [ "${{ steps.ts_latest.outputs.ref }}" != "${{ steps.current.outputs.ts }}" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # --- If anything changed, bump files on main (commit directly) ---
+      - name: Bump pins (if changed)
+        if: >
+          steps.caddy_compare.outputs.changed == 'true' ||
+          steps.cf_compare.outputs.changed == 'true'    ||
+          steps.ts_compare.outputs.changed == 'true'
+        run: |
+          set -e
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          changed=0
+
+          if [ "${{ steps.caddy_compare.outputs.changed }}" = "true" ]; then
+            v="${{ steps.caddy_latest.outputs.version }}"
+            sed -i "s/^ARG CADDY_VERSION=.*/ARG CADDY_VERSION=${v}/" Dockerfile
+            changed=1
+          fi
+
+          if [ "${{ steps.cf_compare.outputs.changed }}" = "true" ] || [ "${{ steps.ts_compare.outputs.changed }}" = "true" ]; then
+            cf="${{ steps.cf_latest.outputs.ref }}"
+            ts="${{ steps.ts_latest.outputs.ref }}"
+            # Rewrite plugins.lock deterministically
+            {
+              echo "CF_PLUGIN=${cf}"
+              echo "TS_PLUGIN=${ts}"
+            } > plugins.lock
+            changed=1
+          fi
+
+          if [ "$changed" = "1" ]; then
+            git add Dockerfile plugins.lock
+            git commit -m "chore: bump pins → Caddy=${{ steps.caddy_latest.outputs.version }}, CF=${{ steps.cf_latest.outputs.ref }}, TS=${{ steps.ts_latest.outputs.ref }}"
+            git push
           fi
 
   build:
     runs-on: ubuntu-latest
-    needs: check-caddy-version
-    if: github.event_name != 'schedule' || needs.check-caddy-version.outputs.changed == 'true'
+    needs: detect-updates
+    # If it's a scheduled run, build only when something changed; otherwise always build on push/PR/manual
+    if: github.event_name != 'schedule' ||
+        needs.detect-updates.outputs.caddy_changed == 'true' ||
+        needs.detect-updates.outputs.cf_changed == 'true'    ||
+        needs.detect-updates.outputs.ts_changed == 'true'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Auto-bump CADDY_VERSION (if changed)
-        if: needs.check-caddy-version.outputs.changed == 'true'
+      - name: Read pins from files
+        id: pins
         run: |
-          v="${{ needs.check-caddy-version.outputs.latest }}"
-          sed -i "s/^ARG CADDY_VERSION=.*/ARG CADDY_VERSION=${v}/" Dockerfile
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -am "chore: bump CADDY_VERSION to ${v}" || true
-          git push || true
+          caddy=$(grep -E '^ARG CADDY_VERSION=' Dockerfile | cut -d= -f2)
+          cf=$(grep -E '^CF_PLUGIN=' plugins.lock | cut -d= -f2-)
+          ts=$(grep -E '^TS_PLUGIN=' plugins.lock | cut -d= -f2-)
+          echo "caddy=$caddy" >> "$GITHUB_OUTPUT"
+          echo "cf=$cf"       >> "$GITHUB_OUTPUT"
+          echo "ts=$ts"       >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -83,15 +170,19 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute image name (lowercase)
+        id: img
+        run: |
+          echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
       - name: Extract metadata (tags/labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          # IMPORTANT: ghcr image name is lowercase
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ steps.img.outputs.name }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=${{ needs.check-caddy-version.outputs.latest }}
+            type=raw,value=${{ steps.pins.outputs.caddy }}
             type=ref,event=branch
             type=sha,prefix=git-,format=short
 
@@ -101,6 +192,10 @@ jobs:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            CADDY_VERSION=${{ steps.pins.outputs.caddy }}
+            CF_PLUGIN=${{ steps.pins.outputs.cf }}
+            TS_PLUGIN=${{ steps.pins.outputs.ts }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
