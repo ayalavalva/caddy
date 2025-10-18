@@ -1,2 +1,0 @@
-CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.1
-TS_PLUGIN=github.com/tailscale/caddy-tailscale@01d084e119cb2ddb49630edb89bb5c6d7c4e8bc0
