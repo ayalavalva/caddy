@@ -1,7 +1,7 @@
 # --- Pinned, reproducible defaults (CI can override via --build-arg) ---
 ARG CADDY_VERSION=2.10.2
 ARG CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.2
-ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@aea8960a2d3c8099e88fe3a999b559bfdfac64a7
+ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@662ef34c64b102e9a23da608a663bc65f7202ace
 
 FROM caddy:${CADDY_VERSION}-builder AS builder
 
