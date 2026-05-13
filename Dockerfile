@@ -1,5 +1,5 @@
 # --- Pinned, reproducible defaults (CI updates these; CI can also override via --build-arg if needed) ---
-ARG CADDY_VERSION=2.11.2
+ARG CADDY_VERSION=2.11.3
 ARG CF_PLUGIN=github.com/caddy-dns/cloudflare@v0.2.4
 ARG TS_PLUGIN=github.com/tailscale/caddy-tailscale@bb080c4414acd465d8be93b4d8f907dbb2ab2544
 
